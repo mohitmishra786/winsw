@@ -1,0 +1,130 @@
+name: restart! elevation test
+
+on:
+  push:
+    branches: [test-restart-elevation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build patched WinSW
+        working-directory: ./src
+        run: |
+          dotnet build WinSW.sln --configuration Release -p:Version=2.13.1
+          dotnet publish -c Release -f net8.0-windows -r win-x64 --self-contained WinSW\WinSW.csproj -p:Version=2.13.1
+      - name: Collect binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory bin | Out-Null
+          Copy-Item artifacts/publish/WinSW.NET462.exe bin/fix-NET462.exe
+          Copy-Item artifacts/publish/WinSW-x64.exe bin/fix-x64.exe
+          gh release download v2.9.0 -R winsw/winsw -p WinSW.NET4.exe -O bin/v2.9.0-NET4.exe
+          gh release download v2.13.0 -R winsw/winsw -p WinSW.NET462.exe_Release -O bin/v2.13.0-NET462.exe
+          gh release download v2.13.0 -R winsw/winsw -p WinSW-x64.exe_Release -O bin/v2.13.0-x64.exe
+          Get-ChildItem bin | ForEach-Object { "{0} {1} {2}" -f $_.Name, $_.VersionInfo.ProductVersion, (Get-FileHash $_.FullName).Hash }
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winsw-bin
+          path: bin
+
+  winsw:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: winsw-bin
+          path: bin
+      - name: Create restricted user
+        shell: pwsh
+        run: |
+          $pw = 'Rt!' + [guid]::NewGuid().ToString('N')
+          "::add-mask::$pw"
+          "RT_PASSWORD=$pw" | Add-Content $env:GITHUB_ENV
+          net user rtuser $pw /add | Out-Null
+          net localgroup Administrators | Out-Host
+      - name: Scenarios
+        shell: pwsh
+        run: |
+          "| scenario | WinSW | account | DACL | privs | command | exit | starts | state |" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "|---|---|---|---|---|---|---|---|---|" | Add-Content $env:GITHUB_STEP_SUMMARY
+          $b = "$pwd\bin"
+          $s = "$pwd\restart-test\scenario.ps1"
+          $runs = @(
+            @{ Name = 'v29-system';         Exe = "$b\v2.9.0-NET4.exe";    Account = 'System'; Dacl = 'default' },
+            @{ Name = 'v29-user';           Exe = "$b\v2.9.0-NET4.exe";    Privs = $true },
+            @{ Name = 'v29-user-noprivs';   Exe = "$b\v2.9.0-NET4.exe" },
+            @{ Name = 'v29-user-elevated';  Exe = "$b\v2.9.0-NET4.exe";    Privs = $true; Command = '/elevated restart!' },
+            @{ Name = 'v213-system';        Exe = "$b\v2.13.0-NET462.exe"; Account = 'System'; Dacl = 'default' },
+            @{ Name = 'v213-user';          Exe = "$b\v2.13.0-NET462.exe"; Privs = $true },
+            @{ Name = 'v213-user-restart';  Exe = "$b\v2.13.0-NET462.exe"; Privs = $true; Command = 'restart' },
+            @{ Name = 'v213-user-elevated'; Exe = "$b\v2.13.0-NET462.exe"; Privs = $true; Command = '/elevated - - - restart!' },
+            @{ Name = 'fix-system';         Exe = "$b\fix-NET462.exe";     Account = 'System'; Dacl = 'default' },
+            @{ Name = 'fix-user';           Exe = "$b\fix-NET462.exe";     Privs = $true },
+            @{ Name = 'fix-user-noprivs';   Exe = "$b\fix-NET462.exe" },
+            @{ Name = 'fix-user-restart';   Exe = "$b\fix-NET462.exe";     Privs = $true; Command = 'restart' },
+            @{ Name = 'fix-user-nostart';   Exe = "$b\fix-NET462.exe";     Privs = $true; Dacl = 'nostart' },
+            @{ Name = 'fix-user-default';   Exe = "$b\fix-NET462.exe";     Privs = $true; Dacl = 'default' },
+            @{ Name = 'fix-x64-user';       Exe = "$b\fix-x64.exe";        Privs = $true }
+          )
+          foreach ($r in $runs) {
+            Write-Host "::group::$($r.Name)"
+            try { & $s @r } catch { Write-Host "scenario error: $_"; "| $($r.Name) | error: $_ |" | Add-Content $env:GITHUB_STEP_SUMMARY }
+            Write-Host "::endgroup::"
+          }
+
+  jenkins:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: winsw-bin
+          path: bin
+      - name: Create restricted user and download Jenkins
+        shell: pwsh
+        run: |
+          $pw = 'Rt!' + [guid]::NewGuid().ToString('N')
+          "::add-mask::$pw"
+          "RT_PASSWORD=$pw" | Add-Content $env:GITHUB_ENV
+          net user rtuser $pw /add | Out-Null
+          Invoke-WebRequest https://get.jenkins.io/war-stable/2.580.2/jenkins.war -OutFile jenkins.war
+          $expected = ((Invoke-WebRequest https://get.jenkins.io/war-stable/2.580.2/jenkins.war.sha256 -UseBasicParsing).Content -split '\s+')[0]
+          $actual = (Get-FileHash jenkins.war -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw "checksum mismatch: $actual vs $expected" }
+          "jenkins.war sha256 $actual"
+      - name: Jenkins scenarios
+        shell: pwsh
+        run: |
+          "| scenario | jenkins.exe | account | restart request | 'fully up' count | state |" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "|---|---|---|---|---|---|" | Add-Content $env:GITHUB_STEP_SUMMARY
+          $b = "$pwd\bin"
+          $s = "$pwd\restart-test\jenkins.ps1"
+          $runs = @(
+            @{ Name = 'bundled-system'; Account = 'System' },
+            @{ Name = 'bundled-user';   Privs = $true },
+            @{ Name = 'v213-user';      Exe = "$b\v2.13.0-NET462.exe"; Privs = $true },
+            @{ Name = 'v213x64-system'; Exe = "$b\v2.13.0-x64.exe"; Account = 'System' },
+            @{ Name = 'fix-user';       Exe = "$b\fix-NET462.exe"; Privs = $true }
+          )
+          foreach ($r in $runs) {
+            Write-Host "::group::$($r.Name)"
+            try { & $s -War "$pwd\jenkins.war" @r } catch { Write-Host "scenario error: $_"; "| $($r.Name) | error: $_ |" | Add-Content $env:GITHUB_STEP_SUMMARY }
+            Write-Host "::endgroup::"
+          }
