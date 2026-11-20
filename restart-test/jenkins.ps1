@@ -13,11 +13,19 @@ $dir = "C:\jk\$Name"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 Copy-Item $War "$dir\jenkins.war"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+# jenkins.exe and jenkins.xml are resources of jenkins-core.jar inside the war
 $zip = [IO.Compression.ZipFile]::OpenRead($War)
-foreach ($e in $zip.Entries | Where-Object { $_.FullName -in 'windows-service/jenkins.exe', 'windows-service/jenkins.xml' }) {
+$coreEntry = $zip.Entries | Where-Object { $_.FullName -like 'WEB-INF/lib/jenkins-core-*.jar' } | Select-Object -First 1
+Write-Host "core jar: $($coreEntry.FullName)"
+$coreJar = "$dir\jenkins-core.jar"
+[IO.Compression.ZipFileExtensions]::ExtractToFile($coreEntry, $coreJar, $true)
+$zip.Dispose()
+$core = [IO.Compression.ZipFile]::OpenRead($coreJar)
+foreach ($e in $core.Entries | Where-Object { $_.FullName -in 'windows-service/jenkins.exe', 'windows-service/jenkins.xml' }) {
     [IO.Compression.ZipFileExtensions]::ExtractToFile($e, "$dir\$($e.Name)", $true)
 }
-$zip.Dispose()
+$core.Dispose()
+Remove-Item $coreJar
 if ($Exe) { Copy-Item $Exe "$dir\jenkins.exe" -Force }
 Write-Host "jenkins.exe version: $((Get-Item "$dir\jenkins.exe").VersionInfo.ProductVersion)"
 
