@@ -47,6 +47,7 @@ if ($Account -eq 'User') {
     sc.exe sdset jenkins "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CCLCSWRPWPDTLOCRRC;;;$sid)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)" | Out-Host
 }
 sc.exe start jenkins | Out-Null
+try {
 
 function Wait-Up([int]$seconds) {
     $deadline = (Get-Date).AddSeconds($seconds)
@@ -76,11 +77,15 @@ $state = (Get-Service jenkins).Status
 Write-Host "restart request: $restart; up after restart: $up2; fully-up lines: $count; service: $state"
 Write-Host '== jenkins.wrapper.log'; Get-Content "$dir\jenkins.wrapper.log" -ErrorAction SilentlyContinue | Out-Host
 Write-Host '== jenkins.err.log (restart-related lines)'
-Select-String -Path "$dir\jenkins.err.log" -Pattern 'restart|Restart|Exception|FATAL|Access|fully up|at hudson|at winsw|at WinSW|\[CRLF\]' -ErrorAction SilentlyContinue | ForEach-Object { $_.Line } | Out-Host
+if (Test-Path "$dir\jenkins.err.log") {
+    Select-String -Path "$dir\jenkins.err.log" -Pattern 'restart|Restart|Exception|FATAL|Access|fully up|at hudson|at winsw|at WinSW|\[CRLF\]' | ForEach-Object { $_.Line } | Out-Host
+}
 "| $Name | $(if ($Exe) { [IO.Path]::GetFileName($Exe) } else { 'bundled jenkins.exe' }) | $Account | $restart | $count | $state |" | Add-Content $env:GITHUB_STEP_SUMMARY
 
+} finally {
 sc.exe stop jenkins | Out-Null
 Start-Sleep -Seconds 10
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*$dir*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 sc.exe delete jenkins | Out-Null
 Start-Sleep -Seconds 3
+}

@@ -31,6 +31,7 @@ jobs:
           gh release download v2.9.0 -R winsw/winsw -p WinSW.NET4.exe -O bin/v2.9.0-NET4.exe
           gh release download v2.13.0 -R winsw/winsw -p WinSW.NET462.exe_Release -O bin/v2.13.0-NET462.exe
           gh release download v2.13.0 -R winsw/winsw -p WinSW-x64.exe_Release -O bin/v2.13.0-x64.exe
+          gh release download v2.12.0 -R winsw/winsw -p WinSW-x64.exe -O bin/v2.12.0-x64.exe
           Get-ChildItem bin | ForEach-Object { "{0} {1} {2}" -f $_.Name, $_.VersionInfo.ProductVersion, (Get-FileHash $_.FullName).Hash }
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,7 +131,9 @@ jobs:
             @{ Name = 'bundled-user-noprivs' },
             @{ Name = 'v213-user';      Exe = "$b\v2.13.0-NET462.exe"; Privs = $true },
             @{ Name = 'v213x64-system'; Exe = "$b\v2.13.0-x64.exe"; Account = 'System' },
-            @{ Name = 'fix-user';       Exe = "$b\fix-NET462.exe"; Privs = $true }
+            @{ Name = 'fix-user';       Exe = "$b\fix-NET462.exe"; Privs = $true },
+            @{ Name = 'fixx64-system';  Exe = "$b\fix-x64.exe"; Account = 'System' },
+            @{ Name = 'v212x64-system'; Exe = "$b\v2.12.0-x64.exe"; Account = 'System' }
           )
           foreach ($r in $runs) {
             Write-Host "::group::$($r.Name)"
