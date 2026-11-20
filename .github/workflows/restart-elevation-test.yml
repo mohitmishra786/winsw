@@ -52,10 +52,13 @@ jobs:
       - name: Create restricted user
         shell: pwsh
         run: |
-          $pw = 'Rt!' + [guid]::NewGuid().ToString('N')
+          # net user asks for confirmation for passwords longer than 14 characters
+          $pw = 'Rt!' + [guid]::NewGuid().ToString('N').Substring(0, 11)
           "::add-mask::$pw"
           "RT_PASSWORD=$pw" | Add-Content $env:GITHUB_ENV
-          net user rtuser $pw /add | Out-Null
+          net user rtuser $pw /add
+          if ($LASTEXITCODE -ne 0) { throw "net user failed: $LASTEXITCODE" }
+          ([Security.Principal.NTAccount]'rtuser').Translate([Security.Principal.SecurityIdentifier]).Value
           net localgroup Administrators | Out-Host
       - name: Scenarios
         shell: pwsh
@@ -100,10 +103,13 @@ jobs:
       - name: Create restricted user and download Jenkins
         shell: pwsh
         run: |
-          $pw = 'Rt!' + [guid]::NewGuid().ToString('N')
+          # net user asks for confirmation for passwords longer than 14 characters
+          $pw = 'Rt!' + [guid]::NewGuid().ToString('N').Substring(0, 11)
           "::add-mask::$pw"
           "RT_PASSWORD=$pw" | Add-Content $env:GITHUB_ENV
-          net user rtuser $pw /add | Out-Null
+          net user rtuser $pw /add
+          if ($LASTEXITCODE -ne 0) { throw "net user failed: $LASTEXITCODE" }
+          ([Security.Principal.NTAccount]'rtuser').Translate([Security.Principal.SecurityIdentifier]).Value
           Invoke-WebRequest https://get.jenkins.io/war-stable/2.580.2/jenkins.war -OutFile jenkins.war
           $expected = ((Invoke-WebRequest https://get.jenkins.io/war-stable/2.580.2/jenkins.war.sha256 -UseBasicParsing).Content -split '\s+')[0]
           $actual = (Get-FileHash jenkins.war -Algorithm SHA256).Hash
