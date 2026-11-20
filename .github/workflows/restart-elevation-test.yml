@@ -111,7 +111,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "net user failed: $LASTEXITCODE" }
           ([Security.Principal.NTAccount]'rtuser').Translate([Security.Principal.SecurityIdentifier]).Value
           Invoke-WebRequest https://get.jenkins.io/war-stable/2.580.2/jenkins.war -OutFile jenkins.war
-          $expected = ((Invoke-WebRequest https://get.jenkins.io/war-stable/2.580.2/jenkins.war.sha256 -UseBasicParsing).Content -split '\s+')[0]
+          Invoke-WebRequest https://get.jenkins.io/war-stable/2.580.2/jenkins.war.sha256 -OutFile jenkins.war.sha256
+          $expected = ((Get-Content jenkins.war.sha256 -Raw).Trim() -split '\s+')[0]
           $actual = (Get-FileHash jenkins.war -Algorithm SHA256).Hash
           if ($actual -ne $expected) { throw "checksum mismatch: $actual vs $expected" }
           "jenkins.war sha256 $actual"
@@ -125,6 +126,7 @@ jobs:
           $runs = @(
             @{ Name = 'bundled-system'; Account = 'System' },
             @{ Name = 'bundled-user';   Privs = $true },
+            @{ Name = 'bundled-user-noprivs' },
             @{ Name = 'v213-user';      Exe = "$b\v2.13.0-NET462.exe"; Privs = $true },
             @{ Name = 'v213x64-system'; Exe = "$b\v2.13.0-x64.exe"; Account = 'System' },
             @{ Name = 'fix-user';       Exe = "$b\fix-NET462.exe"; Privs = $true }
