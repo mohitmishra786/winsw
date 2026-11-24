@@ -13,6 +13,7 @@ jobs:
       with:
         dotnet-version: 8.0.x
     - run: dotnet run -c Release -f ${{ matrix.tfm }} --project eng\race\Stress -- 500
+    - run: dotnet run -c Release -f ${{ matrix.tfm }} --project eng\race\Stress -- 20000 direct
   service:
     strategy:
       fail-fast: false
@@ -31,7 +32,8 @@ jobs:
         dotnet publish -c Release -f net8.0-windows -r win-x64 --self-contained WinSW\WinSW.csproj
     - name: loop
       run: |
-        $exe = if ('${{ matrix.flavor }}' -eq 'net462') { Get-ChildItem -Recurse src\WinSW\bin\Release\net462 -Filter WinSW.exe | Select-Object -First 1 } else { Get-ChildItem -Recurse src\WinSW\bin\Release\net8.0-windows -Filter WinSW-x64.exe | Select-Object -First 1 }
+        $exe = if ('${{ matrix.flavor }}' -eq 'net462') { Get-ChildItem -Recurse artifacts\bin\WinSW -Filter WinSW.exe | Where-Object FullName -like '*net462*' | Select-Object -First 1 } else { Get-ChildItem -Recurse artifacts -Filter WinSW-x64.exe | Select-Object -First 1 }
+        Get-ChildItem -Recurse artifacts -Filter *.exe | Select-Object -Expand FullName
         eng\race\service-loop.ps1 -Exe $exe.FullName -Dir C:\race -Count 150
     - if: always()
       uses: actions/upload-artifact@v4
