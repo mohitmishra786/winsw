@@ -1,0 +1,40 @@
+name: race
+on: [push, workflow_dispatch]
+jobs:
+  stress:
+    strategy:
+      fail-fast: false
+      matrix:
+        tfm: [net462, net8.0-windows]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 8.0.x
+    - run: dotnet run -c Release -f ${{ matrix.tfm }} --project eng\race\Stress -- 500
+  service:
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [net462, x64]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 8.0.x
+    - name: build
+      working-directory: src
+      run: |
+        dotnet build WinSW\WinSW.csproj -c Release -f net462
+        dotnet publish -c Release -f net8.0-windows -r win-x64 --self-contained WinSW\WinSW.csproj
+    - name: loop
+      run: |
+        $exe = if ('${{ matrix.flavor }}' -eq 'net462') { Get-ChildItem -Recurse src\WinSW\bin\Release\net462 -Filter WinSW.exe | Select-Object -First 1 } else { Get-ChildItem -Recurse src\WinSW\bin\Release\net8.0-windows -Filter WinSW-x64.exe | Select-Object -First 1 }
+        eng\race\service-loop.ps1 -Exe $exe.FullName -Dir C:\race -Count 150
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: log-${{ matrix.flavor }}
+        path: C:\race\*.log
