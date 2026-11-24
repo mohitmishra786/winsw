@@ -21,12 +21,14 @@ if (args.Length > 1 && args[1] == "direct")
         var reader = new Thread(() =>
         {
             go.Set();
-            try { while (true) { _ = q.StartTime; } }
+            Thread.SpinWait(1000);
+            // A single read, as in GetChildren: StartTime is cached after the first success on .NET.
+            try { _ = q.StartTime; }
             catch (Exception e) { result = e.GetType().Name + ": " + e.Message; }
         });
         reader.Start();
         go.Wait();
-        Thread.SpinWait(i % 2000);
+        Thread.SpinWait(i % 3000);
         q.Dispose();
         reader.Join();
         counts[result] = counts.TryGetValue(result, out int c) ? c + 1 : 1;
