@@ -32,7 +32,7 @@ jobs:
         dotnet publish -c Release -f net8.0-windows -r win-x64 --self-contained WinSW\WinSW.csproj
     - name: loop
       run: |
-        $exe = if ('${{ matrix.flavor }}' -eq 'net462') { Get-ChildItem -Recurse artifacts\bin\WinSW -Filter WinSW.exe | Where-Object FullName -like '*net462*' | Select-Object -First 1 } else { Get-ChildItem -Recurse artifacts -Filter WinSW-x64.exe | Select-Object -First 1 }
+        $exe = if ('${{ matrix.flavor }}' -eq 'net462') { Get-Item artifacts\publish\WinSW.NET462.exe } else { Get-ChildItem -Recurse artifacts -Filter WinSW-x64.exe | Select-Object -First 1 }
         Get-ChildItem -Recurse artifacts -Filter *.exe | Select-Object -Expand FullName
         eng\race\service-loop.ps1 -Exe $exe.FullName -Dir C:\race -Count 150
     - if: always()
