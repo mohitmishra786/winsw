@@ -1,0 +1,16 @@
+name: badversion
+on: push
+jobs:
+  restore:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['.2.14.1', '2.14.1']
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 8.0.x
+    - working-directory: src
+      run: dotnet build WinSW.sln --configuration Debug "-p:Version=${{ matrix.version }}"
