@@ -1,0 +1,91 @@
+name: v3 restart! test
+
+on:
+  push:
+    branches: [test-v3-restart]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          path: fix
+      - uses: actions/checkout@v6.0.2
+        with:
+          repository: winsw/winsw
+          ref: 1d0402f9
+          path: base
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 7.0.x
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory bin | Out-Null
+          foreach ($v in 'base', 'fix') {
+            Push-Location $v
+            dotnet build src\WinSW\WinSW.csproj -c Release -p:Version=3.0.0
+            if ($LASTEXITCODE) { throw "build $v failed" }
+            dotnet publish src\WinSW\WinSW.csproj -c Release -f net7.0-windows -r win-x64 --sc -p:Version=3.0.0
+            if ($LASTEXITCODE) { throw "publish $v failed" }
+            Pop-Location
+            Copy-Item "$v\artifacts\publish\WinSW-net461.exe" "bin\$v-net461.exe"
+            Copy-Item "$v\artifacts\publish\WinSW-x64.exe" "bin\$v-x64.exe"
+          }
+          Get-ChildItem bin | ForEach-Object { "{0} {1}" -f $_.Name, (Get-FileHash $_.FullName).Hash }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winsw-bin
+          path: bin
+
+  scenarios:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: winsw-bin
+          path: bin
+      - name: Create restricted user
+        shell: pwsh
+        run: |
+          $pw = 'Rt!' + [guid]::NewGuid().ToString('N').Substring(0, 11)
+          "::add-mask::$pw"
+          "RT_PASSWORD=$pw" | Add-Content $env:GITHUB_ENV
+          net user rtuser $pw /add
+          if ($LASTEXITCODE -ne 0) { throw "net user failed: $LASTEXITCODE" }
+      - name: Scenarios
+        shell: pwsh
+        run: |
+          "| scenario | WinSW | account | DACL | privs | touched | command | exit | starts | state |" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "|---|---|---|---|---|---|---|---|---|---|" | Add-Content $env:GITHUB_STEP_SUMMARY
+          $b = "$pwd\bin"
+          $s = "$pwd\restart-test\scenario.ps1"
+          $runs = @(
+            @{ Name = 'base-system';         Exe = "$b\base-net461.exe"; Account = 'System'; Dacl = 'default' },
+            @{ Name = 'base-user';           Exe = "$b\base-net461.exe"; Privs = $true },
+            @{ Name = 'base-user-noprivs';   Exe = "$b\base-net461.exe" },
+            @{ Name = 'fix-system';          Exe = "$b\fix-net461.exe";  Account = 'System'; Dacl = 'default' },
+            @{ Name = 'fix-system-touched';  Exe = "$b\fix-net461.exe";  Account = 'System'; Dacl = 'default'; Touch = $true },
+            @{ Name = 'fix-user';            Exe = "$b\fix-net461.exe";  Privs = $true },
+            @{ Name = 'fix-user-noprivs';    Exe = "$b\fix-net461.exe" },
+            @{ Name = 'fix-user-restart';    Exe = "$b\fix-net461.exe";  Privs = $true; Command = 'restart' },
+            @{ Name = 'fix-user-nostart';    Exe = "$b\fix-net461.exe";  Privs = $true; Dacl = 'nostart' },
+            @{ Name = 'fix-user-default';    Exe = "$b\fix-net461.exe";  Privs = $true; Dacl = 'default' },
+            @{ Name = 'fix-user-touched';    Exe = "$b\fix-net461.exe";  Privs = $true; Touch = $true },
+            @{ Name = 'base-x64-user';       Exe = "$b\base-x64.exe";    Privs = $true },
+            @{ Name = 'fix-x64-user';        Exe = "$b\fix-x64.exe";     Privs = $true },
+            @{ Name = 'fix-x64-system';      Exe = "$b\fix-x64.exe";     Account = 'System'; Dacl = 'default' }
+          )
+          foreach ($r in $runs) {
+            Write-Host "::group::$($r.Name)"
+            try { & $s @r } catch { Write-Host "scenario error: $_"; "| $($r.Name) | error: $_ |" | Add-Content $env:GITHUB_STEP_SUMMARY }
+            Write-Host "::endgroup::"
+          }
