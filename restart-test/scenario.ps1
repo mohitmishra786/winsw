@@ -10,6 +10,8 @@ param(
     [switch] $Privs,
     # make the config file newer than the service's registry key, so AutoRefresh runs
     [switch] $Touch,
+    # autoRefresh is off by default here, it fails for non-admin accounts at startup (#872)
+    [switch] $AutoRefresh,
     [int] $WaitSeconds = 60
 )
 $ErrorActionPreference = 'Stop'
@@ -33,6 +35,7 @@ if ($Account -eq 'User') {
   <arguments>-NoProfile -ExecutionPolicy Bypass -File "%BASE%\app.ps1"</arguments>
   <logpath>%BASE%\logs</logpath>
   <log mode="append"/>
+  <autoRefresh>$(if ($AutoRefresh) { 'true' } else { 'false' })</autoRefresh>
   $acct
 </service>
 "@ | Set-Content -Path "$dir\svc.xml"
@@ -64,7 +67,7 @@ Get-ChildItem "$dir\logs\*.log" -Exclude *.out.log -ErrorAction SilentlyContinue
 Write-Host "== result: starts=$starts state=$state"
 
 $exit = ($events | Where-Object { $_ -match ' EXIT ' } | Select-Object -First 1) -replace '^.* EXIT ', ''
-"| $Name | $([IO.Path]::GetFileName($Exe)) | $Account | $Dacl | $Privs | $Touch | ``$Command`` | $exit | $starts | $state |" | Add-Content $env:GITHUB_STEP_SUMMARY
+"| $Name | $([IO.Path]::GetFileName($Exe)) | $Account | $Dacl | $Privs | $AutoRefresh | $Touch | ``$Command`` | $exit | $starts | $state |" | Add-Content $env:GITHUB_STEP_SUMMARY
 
 Write-Host "== cleanup"
 sc.exe stop $svc | Out-Null

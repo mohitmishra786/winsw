@@ -64,8 +64,8 @@ jobs:
       - name: Scenarios
         shell: pwsh
         run: |
-          "| scenario | WinSW | account | DACL | privs | touched | command | exit | starts | state |" | Add-Content $env:GITHUB_STEP_SUMMARY
-          "|---|---|---|---|---|---|---|---|---|---|" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "| scenario | WinSW | account | DACL | privs | autoRefresh | touched | command | exit | starts | state |" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "|---|---|---|---|---|---|---|---|---|---|---|" | Add-Content $env:GITHUB_STEP_SUMMARY
           $b = "$pwd\bin"
           $s = "$pwd\restart-test\scenario.ps1"
           $runs = @(
@@ -73,13 +73,13 @@ jobs:
             @{ Name = 'base-user';           Exe = "$b\base-net461.exe"; Privs = $true },
             @{ Name = 'base-user-noprivs';   Exe = "$b\base-net461.exe" },
             @{ Name = 'fix-system';          Exe = "$b\fix-net461.exe";  Account = 'System'; Dacl = 'default' },
-            @{ Name = 'fix-system-touched';  Exe = "$b\fix-net461.exe";  Account = 'System'; Dacl = 'default'; Touch = $true },
+            @{ Name = 'fix-system-touched';  Exe = "$b\fix-net461.exe";  Account = 'System'; Dacl = 'default'; AutoRefresh = $true; Touch = $true },
             @{ Name = 'fix-user';            Exe = "$b\fix-net461.exe";  Privs = $true },
             @{ Name = 'fix-user-noprivs';    Exe = "$b\fix-net461.exe" },
             @{ Name = 'fix-user-restart';    Exe = "$b\fix-net461.exe";  Privs = $true; Command = 'restart' },
             @{ Name = 'fix-user-nostart';    Exe = "$b\fix-net461.exe";  Privs = $true; Dacl = 'nostart' },
             @{ Name = 'fix-user-default';    Exe = "$b\fix-net461.exe";  Privs = $true; Dacl = 'default' },
-            @{ Name = 'fix-user-touched';    Exe = "$b\fix-net461.exe";  Privs = $true; Touch = $true },
+            @{ Name = 'fix-user-refresh';    Exe = "$b\fix-net461.exe";  Privs = $true; AutoRefresh = $true },
             @{ Name = 'base-x64-user';       Exe = "$b\base-x64.exe";    Privs = $true },
             @{ Name = 'fix-x64-user';        Exe = "$b\fix-x64.exe";     Privs = $true },
             @{ Name = 'fix-x64-system';      Exe = "$b\fix-x64.exe";     Account = 'System'; Dacl = 'default' }
